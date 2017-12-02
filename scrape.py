@@ -8,18 +8,23 @@ import datetime
 
 # edit these three variables
 user = 'realdonaldtrump'
-start = datetime.datetime(2010, 1, 1)  # year, month, day
-end = datetime.datetime(2016, 12, 7)  # year, month, day
+start = datetime.datetime(2015, 1, 1)  # year, month, day
+end = datetime.datetime(2017, 12, 7)  # year, month, day
 
 # only edit these if you're having problems
 delay = 1  # time to wait on each page load before reading the page
-driver = webdriver.Safari()  # options are Chrome() Firefox() Safari()
+driver = webdriver.Firefox()  # options are Chrome() Firefox() Safari()
 
 
 # don't mess with this stuff
 twitter_ids_filename = 'all_ids.json'
 days = (end - start).days + 1
 id_selector = '.time a.tweet-timestamp'
+text_selector = '.tweet-text'
+date_selector = '._timestamp'
+comment_selector = '.js-actionReply .ProfileTweet-actionCount'
+retweet_selector = '.js-actionRetweet .ProfileTweet-actionCount'
+like_selector = '.js-actionFavorite .ProfileTweet-actionCount'
 tweet_selector = 'li.js-stream-item'
 user = user.lower()
 ids = []
@@ -63,6 +68,12 @@ for day in range(days):
         for tweet in found_tweets:
             try:
                 id = tweet.find_element_by_css_selector(id_selector).get_attribute('href').split('/')[-1]
+                text = tweet.find_element_by_css_selector(text_selector).text
+                date = tweet.find_element_by_css_selector(date_selector).text
+                like_num = tweet.find_element_by_css_selector(like_selector).text
+                comment_num = tweet.find_element_by_css_selector(comment_selector).text
+                retweet_num = tweet.find_element_by_css_selector(retweet_selector).text
+                print(id, date, like_num, comment_num, retweet_num)
                 ids.append(id)
             except StaleElementReferenceException as e:
                 print('lost element reference', tweet)
