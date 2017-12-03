@@ -5,32 +5,27 @@ from time import sleep
 import json
 import datetime
 import os
+import psutil
+import threading
+from datetime import datetime, timedelta
 
-
-# edit these three variables
-user = 'realdonaldtrump'
-#start = datetime.datetime(2015, 1, 1)  # year, month, day
-#end = datetime.datetime(2016, 1, 1)  # year, month, day
-#start = datetime.datetime(2016, 1, 2)  # year, month, day
-#end = datetime.datetime(2017, 1, 1)  # year, month, day
-#start = datetime.datetime(2017, 1, 2)  # year, month, day
-#end = datetime.datetime(2017, 12, 2)  # year, month, day
-start = datetime.datetime(2015,1,1)
-end = datetime.datetime(2015,1,1)
 
 # only edit these if you're having problems
 delay = .25  # time to wait on each page load before reading the page
-driver = webdriver.Firefox()  # options are Chrome() Firefox() Safari()
 
+# edit these three variables
+user = 'realdonaldtrump'
+#start = datetime(2015, 1, 1)  # year, month, day
+#end = datetime(2017, 12, 2)  # year, month, day
+start = datetime(2015, 1, 2)  # year, month, day
+end = datetime(2015, 1, 6)  # year, month, day
 
 # don't mess with this stuff
-twitter_ids_filename = user + '_tweets_' + start.strftime("%d_%m_%y") + '_' + end.strftime("%d_%m_%y") + '.json'
-days = (end - start).days + 1
 id_selector = '.time a.tweet-timestamp'
 tweet_selector = 'li.js-stream-item'
-
+MEMORY_PERCENT_THRESHOLD = 85
+tweet_id_prefix = '_tweets'
 user = user.lower()
-ids = []
 
 def format_day(date):
     day = '0' + str(date.day) if len(str(date.day)) == 1 else str(date.day)
@@ -44,62 +39,91 @@ def form_url(since, until):
     return p1 + p2
 
 def increment_day(date, i):
-    return date + datetime.timedelta(days=i)
+    return date + timedelta(days=i)
 
-print('here')
-for day in range(days):
-    d1 = format_day(increment_day(start, 0))
-    d2 = format_day(increment_day(start, 1))
-    search_url = form_url(d1, d2)
-    print(search_url)
-    print(d1)
-    driver.get(search_url)
-    sleep(delay)
+def save_file(ids, num_files):
+	twitter_ids_filename = user + tweet_id_prefix + '_' + str(threading.get_ident()) + '_' + \
+		str(num_files) + '_' + start.strftime("%m_%d_%y") + '_' + end.strftime("%m_%d_%y") + '.json'
+	with open(twitter_ids_filename, 'w') as outfile:
+		ids = list(set(ids))
+		print(ids,'\n')
+		tweet_ids = {
+			"user":user,
+			"ids":ids
+		}
+		json.dump(tweet_ids, outfile)
 
-    try:
-        found_tweets = driver.find_elements_by_css_selector(tweet_selector)
-        increment = 10
+def create_tweet_id_file(start, end):
+	num_files = 0
+	ids = []
+	driver = webdriver.Firefox()  
+	days = (end - start).days + 1
+	for day in range(days):
+		d1 = format_day(increment_day(start, 0))
+		d2 = format_day(increment_day(start, 1))
+		search_url = form_url(d1, d2)
+		print(search_url)
+		print(d1)
+		driver.get(search_url)
+		sleep(delay)
 
-        while len(found_tweets) >= increment:
-            print('scrolling down to load more tweets')
-            driver.execute_script('window.scrollTo(0, document.body.scrollHeight);')
-            sleep(delay)
-            found_tweets = driver.find_elements_by_css_selector(tweet_selector)
-            increment += 10
+		try:
+			found_tweets = driver.find_elements_by_css_selector(tweet_selector)
+			increment = 10
 
-        print('{} tweets found, {} total'.format(len(found_tweets), len(ids)))
+			while len(found_tweets) >= increment:
+				print('scrolling down to load more tweets')
+				driver.execute_script('window.scrollTo(0, document.body.scrollHeight);')
+				sleep(delay)
+				found_tweets = driver.find_elements_by_css_selector(tweet_selector)
+				increment += 10
 
-        for tweet in found_tweets:
-            try:
-            	id = tweet.find_element_by_css_selector(id_selector).get_attribute('href').split('/')[-1]
-            	ids.append(id)
-            except StaleElementReferenceException as e:
-                print('lost element reference', tweet)
+			print('{} tweets found, {} total'.format(len(found_tweets), len(ids)))
 
-    except NoSuchElementException:
-        print('no tweets on this day')
+			for tweet in found_tweets:
+				try:
+					id = tweet.find_element_by_css_selector(id_selector).get_attribute('href').split('/')[-1]
+					ids.append(id)
+				except StaleElementReferenceException as e:
+					print('lost element reference', tweet)
 
-    start = increment_day(start, 1)
+		except NoSuchElementException:
+			print('no tweets on this day')
+			start = increment_day(start, 1)
 
-try:
-    with open(twitter_ids_filename) as f:
-        all_ids = ids + json.load(f)
-        data_to_write = list(set(all_ids))
-        print('tweets found on this scrape: ', len(ids))
-        print('total tweet count: ', len(data_to_write))
-except FileNotFoundError:
-    with open(twitter_ids_filename, 'w') as f:
-        all_ids = ids
-        all_ids = list(set(all_ids))
-        data_dict = {
-        	"user": user,
-        	"ids": ids
-        }
-        print('tweets found on this scrape: ', len(ids))
-        print('total tweet count: ', len(all_ids))
+		if psutil.virtual_memory().percent >= MEMORY_PERCENT_THRESHOLD:
+			save_file(ids, num_files)
+			ids = []
+			num_files += 1
 
-with open(twitter_ids_filename, 'w') as outfile:
-    json.dump(data_dict, outfile)
+	save_file(ids, num_files)
 
-print('all done here')
-driver.close()
+	driver.close()
+
+if __name__ == "__main__":
+	days = (end-start).days + 1
+	# divide by two to account for hyperthreading
+	num_cores = psutil.cpu_count() // 2 
+	if days > num_cores:
+	#	print(start, end_date)
+		num_days_between = days//4
+	#	print((num_days_between) * 4 + (days % 4), days)
+		threads = []
+		num_threads = num_cores-1
+		for i in range(num_threads):
+			end_for_thread = start + timedelta(days=num_days_between-1)
+			t = threading.Thread(target=create_tweet_id_file, kwargs={'start':start, 'end':end_for_thread})
+			print('start and end for thread', i,':', start.strftime("%m_%d_%y"), end_for_thread.strftime("%m_%d_%y"))
+			threads.append(t)
+			t.start()
+			start = end_for_thread + timedelta(days=1)
+
+		print('start and end for thread', start.strftime("%m_%d_%y"), end.strftime("%m_%d_%y"))
+		create_tweet_id_file(start, end_for_thread)
+		# Wait for threads
+		for t in threads:
+			t.join()
+	else:
+		create_tweet_id_file(start,end)
+
+			
