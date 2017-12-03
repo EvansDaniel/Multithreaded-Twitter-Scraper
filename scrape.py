@@ -4,28 +4,30 @@ from selenium.common.exceptions import NoSuchElementException, StaleElementRefer
 from time import sleep
 import json
 import datetime
+import os
 
 
 # edit these three variables
 user = 'realdonaldtrump'
-start = datetime.datetime(2015, 1, 1)  # year, month, day
-end = datetime.datetime(2017, 12, 7)  # year, month, day
+#start = datetime.datetime(2015, 1, 1)  # year, month, day
+#end = datetime.datetime(2016, 1, 1)  # year, month, day
+#start = datetime.datetime(2016, 1, 2)  # year, month, day
+#end = datetime.datetime(2017, 1, 1)  # year, month, day
+start = datetime.datetime(2017, 1, 2)  # year, month, day
+end = datetime.datetime(2017, 12, 2)  # year, month, day
 
 # only edit these if you're having problems
-delay = 1  # time to wait on each page load before reading the page
+delay = .25  # time to wait on each page load before reading the page
 driver = webdriver.Firefox()  # options are Chrome() Firefox() Safari()
 
 
 # don't mess with this stuff
-twitter_ids_filename = 'all_ids.json'
+id_filename_prefix = 'all_ids_'
+twitter_ids_filename = id_filename_prefix + str(os.getpid()) + '.json'
 days = (end - start).days + 1
 id_selector = '.time a.tweet-timestamp'
-text_selector = '.tweet-text'
-date_selector = '._timestamp'
-comment_selector = '.js-actionReply .ProfileTweet-actionCount'
-retweet_selector = '.js-actionRetweet .ProfileTweet-actionCount'
-like_selector = '.js-actionFavorite .ProfileTweet-actionCount'
 tweet_selector = 'li.js-stream-item'
+
 user = user.lower()
 ids = []
 
@@ -43,13 +45,14 @@ def form_url(since, until):
 def increment_day(date, i):
     return date + datetime.timedelta(days=i)
 
+print('here')
 for day in range(days):
     d1 = format_day(increment_day(start, 0))
     d2 = format_day(increment_day(start, 1))
-    url = form_url(d1, d2)
-    print(url)
+    search_url = form_url(d1, d2)
+    print(search_url)
     print(d1)
-    driver.get(url)
+    driver.get(search_url)
     sleep(delay)
 
     try:
@@ -67,14 +70,8 @@ for day in range(days):
 
         for tweet in found_tweets:
             try:
-                id = tweet.find_element_by_css_selector(id_selector).get_attribute('href').split('/')[-1]
-                text = tweet.find_element_by_css_selector(text_selector).text
-                date = tweet.find_element_by_css_selector(date_selector).text
-                like_num = tweet.find_element_by_css_selector(like_selector).text
-                comment_num = tweet.find_element_by_css_selector(comment_selector).text
-                retweet_num = tweet.find_element_by_css_selector(retweet_selector).text
-                print(id, date, like_num, comment_num, retweet_num)
-                ids.append(id)
+            	id = tweet.find_element_by_css_selector(id_selector).get_attribute('href').split('/')[-1]
+            	ids.append(id)
             except StaleElementReferenceException as e:
                 print('lost element reference', tweet)
 
@@ -82,7 +79,6 @@ for day in range(days):
         print('no tweets on this day')
 
     start = increment_day(start, 1)
-
 
 try:
     with open(twitter_ids_filename) as f:
@@ -93,12 +89,16 @@ try:
 except FileNotFoundError:
     with open(twitter_ids_filename, 'w') as f:
         all_ids = ids
-        data_to_write = list(set(all_ids))
+        all_ids = list(set(all_ids))
+        data_dict = {
+        	"user": user,
+        	"ids": ids
+        }
         print('tweets found on this scrape: ', len(ids))
-        print('total tweet count: ', len(data_to_write))
+        print('total tweet count: ', len(all_ids))
 
 with open(twitter_ids_filename, 'w') as outfile:
-    json.dump(data_to_write, outfile)
+    json.dump(data_dict, outfile)
 
 print('all done here')
 driver.close()
