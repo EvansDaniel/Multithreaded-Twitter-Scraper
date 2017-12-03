@@ -8,4 +8,6 @@ Also, special thanks to <a href="https://github.com/bpb27">bpb27</a>. This scrap
 
 Timings and speed up due to parallelization of scraper (y axis for timings is in seconds):
 
+<strong>6x speed up using 8 cores!</strong>
+
 ![Twitter Scraping Timings and Speed Ups from Parallelization](http://hive.sewanee.edu/evansdb0/Twitter_Speedups.png)
