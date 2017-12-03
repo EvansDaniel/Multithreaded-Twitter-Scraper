@@ -13,8 +13,10 @@ user = 'realdonaldtrump'
 #end = datetime.datetime(2016, 1, 1)  # year, month, day
 #start = datetime.datetime(2016, 1, 2)  # year, month, day
 #end = datetime.datetime(2017, 1, 1)  # year, month, day
-start = datetime.datetime(2017, 1, 2)  # year, month, day
-end = datetime.datetime(2017, 12, 2)  # year, month, day
+#start = datetime.datetime(2017, 1, 2)  # year, month, day
+#end = datetime.datetime(2017, 12, 2)  # year, month, day
+start = datetime.datetime(2015,1,1)
+end = datetime.datetime(2015,1,1)
 
 # only edit these if you're having problems
 delay = .25  # time to wait on each page load before reading the page
@@ -22,8 +24,7 @@ driver = webdriver.Firefox()  # options are Chrome() Firefox() Safari()
 
 
 # don't mess with this stuff
-id_filename_prefix = 'all_ids_'
-twitter_ids_filename = id_filename_prefix + str(os.getpid()) + '.json'
+twitter_ids_filename = user + '_tweets_' + start.strftime("%d_%m_%y") + '_' + end.strftime("%d_%m_%y") + '.json'
 days = (end - start).days + 1
 id_selector = '.time a.tweet-timestamp'
 tweet_selector = 'li.js-stream-item'

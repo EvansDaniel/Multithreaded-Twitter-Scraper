@@ -6,11 +6,11 @@ import json
 import datetime
 import os
 import psutil
+import sys
+import threading
 
 # only edit these if you're having problems
 delay = .25  # time to wait on each page load before reading the page
-driver = webdriver.Firefox()  # options are Chrome() Firefox() Safari()
-
 pop_up_tweet_selector ='.permalink-container'
 text_selector = '.tweet-text'
 metadata_selector = '.metadata'
@@ -46,7 +46,7 @@ def get_comment_details(comment):
 	return comment_dict
 
 # tweet is selenium element reference to '.permalink-container' class
-def get_comments():
+def get_comments(driver, tweet):
 	reply_to_container = driver.find_element_by_css_selector('.replies-to')
 	comments = reply_to_container.find_elements_by_css_selector('.tweet')
 	old_comment_len = len(comments)
@@ -67,12 +67,12 @@ def get_comments():
 		c.append(comment_details)
 	return c
 
-def get_tweet_info(tweet, id):
+def get_tweet_info(driver,tweet, id):
 	text = tweet.find_element_by_css_selector(text_selector).text
 	metadata = tweet.find_element_by_css_selector(metadata_selector).text
 	like_num = tweet.find_element_by_css_selector(like_selector).text
 	comment_num = tweet.find_element_by_css_selector(comment_selector).text
-	comments = get_comments()
+	comments = get_comments(driver, tweet)
 	retweet_num = tweet.find_element_by_css_selector(retweet_selector).text
 	tweet_dict = {
 		"tweet_id": id,
@@ -89,35 +89,57 @@ def form_tweet_detail_url(id, user):
 	url = 'https://twitter.com/' + user + '/status/' + id
 	return url
 
-def get_id_files():
+def get_id_files(prefix):
 	files = os.listdir('.')
 	id_files = []
 	for file in files:
-		if os.path.isfile(file) and file.startswith('all_ids_'):
+		if os.path.isfile(file) and file.startswith('prefix'):
 			id_files.append(file)
 	return id_files
 
-tweets_filename_prefix = 'tweets_filename_'
-tweets = []
-num_files = 0
-id_files = get_id_files()
-MEMORY_THRESHOLD = 2000 * 1024 * 1024 # 2GB
-print(id_files)
-for id_file in id_files:
+def create_tweet_detail_files(id_file=None):
+	if not id_file:
+		return
+	driver = webdriver.Firefox()  # options are Chrome() Firefox() Safari()
 	user_tweet_dict = json.load(open(id_file))
 	user = user_tweet_dict['user']
 	ids = user_tweet_dict['ids']
+	tweets = []
 	for id in ids:
 		driver.get(form_tweet_detail_url(id, user))
 		sleep(delay)
 		tweet = driver.find_element_by_css_selector(pop_up_tweet_selector)
-		tweet_dict = get_tweet_info(tweet, id)
+		tweet_dict = get_tweet_info(driver,tweet, id)
 		tweets.append(tweet_dict)
 		print(len(tweets))
 		# If memory available is less than threshold, save tweet data to a file to save memory
 		if psutil.virtual_memory().available <= MEMORY_THRESHOLD:
+			print('-----------------VIRTUAL MEMORY IS ALMOST EMPTY---------------------')
 			tweets_filename = tweets_filename_prefix + str(num_files) + '_' + str(os.getpid()) + '.json'
 			with open(tweets_filename, 'w') as outfile:
 				json.dump(tweets, outfile)
 			num_files += 1
 			tweets = []
+
+
+MEMORY_THRESHOLD = 2000 * 1024 * 1024 # 2GB
+twitter_user = input('What is the username of the twitter user? ')
+id_files = get_id_files(twitter_user)
+if len(id_files) == 0:
+	print('No id files for that username:', twitter_user)
+	print('Run python3 scrape.py with that twitter user as input')
+	sys.exit(1)
+# Use multiple threads if multiple id_files
+threads = []
+if len(id_files) > 1:
+	for id_file in id_files[1:]:
+		t=threading.Thread(target=create_tweet_detail_files, kwargs={'id_file':id_file})
+		threads.append(t)
+		t.start()
+
+# Set the main thread to work
+create_tweet_detail_files(id_files[0])
+
+# Wait for other threads to finish
+for t in threads:
+	t.join()

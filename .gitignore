@@ -1,5 +1,6 @@
 api_keys.json
 geckodriver.log
 /data
-
+__pycache__
+*.json
 
