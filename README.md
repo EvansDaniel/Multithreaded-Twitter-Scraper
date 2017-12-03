@@ -8,4 +8,4 @@ Also, special thanks to <a href="https://github.com/bpb27">bpb27</a>. This scrap
 
 Timings and speed up due to parallelization of scraper (y axis for timings is in seconds):
 
-![Twitter Scraping Timings and Speed Ups](http://hive.sewanee.edu/evansdb0/Twitter_Speedups.png)
+![Twitter Scraping Timings and Speed Ups from Parallelization](http://hive.sewanee.edu/evansdb0/Twitter_Speedups.png)
