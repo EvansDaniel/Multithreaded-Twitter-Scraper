@@ -9,6 +9,11 @@ import psutil
 import sys
 import threading
 
+using_python3 = sys.version_info[0] >= 3
+if not using_python3:
+	print('You must use python 3. Run with python3 <filename>')
+	sys.exit(1)
+
 # only edit these if you're having problems
 delay = .25  # time to wait on each page load before reading the page
 pop_up_tweet_selector ='.permalink-container'

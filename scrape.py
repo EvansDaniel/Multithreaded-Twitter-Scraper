@@ -8,17 +8,21 @@ import os
 import psutil
 import threading
 from datetime import datetime, timedelta
+import sys
 
+using_python3 = sys.version_info[0] >= 3
+if not using_python3:
+	print('You must use python 3. Run with python3 scrape.py')
+	sys.exit(1)
 
-# only edit these if you're having problems
-delay = .25  # time to wait on each page load before reading the page
+# time to wait on each page load before reading the page
+delay = 1 
 
 # edit these three variables
 user = 'realdonaldtrump'
-#start = datetime(2015, 1, 1)  # year, month, day
-#end = datetime(2017, 12, 2)  # year, month, day
-start = datetime(2015, 1, 2)  # year, month, day
-end = datetime(2015, 1, 6)  # year, month, day
+filename=input('What is the id filename?')
+start = datetime(2015, 1, 1)  # year, month, day
+end = datetime(2017, 12, 3)  # year, month, day
 
 # don't mess with this stuff
 id_selector = '.time a.tweet-timestamp'
@@ -63,7 +67,6 @@ def create_tweet_id_file(start, end):
 		d2 = format_day(increment_day(start, 1))
 		search_url = form_url(d1, d2)
 		print(search_url)
-		print(d1)
 		driver.get(search_url)
 		sleep(delay)
 
@@ -89,22 +92,24 @@ def create_tweet_id_file(start, end):
 
 		except NoSuchElementException:
 			print('no tweets on this day')
-			start = increment_day(start, 1)
 
 		if psutil.virtual_memory().percent >= MEMORY_PERCENT_THRESHOLD:
 			save_file(ids, num_files)
 			ids = []
 			num_files += 1
 
-	save_file(ids, num_files)
+		# Go to next day of tweets
+		start = increment_day(start, 1)
 
+	# Save remaining found ids
+	save_file(ids, num_files)
 	driver.close()
 
 if __name__ == "__main__":
 	days = (end-start).days + 1
 	# divide by two to account for hyperthreading
 	num_cores = psutil.cpu_count() // 2 
-	if days > num_cores:
+	if days >= num_cores:
 	#	print(start, end_date)
 		num_days_between = days//4
 	#	print((num_days_between) * 4 + (days % 4), days)
@@ -118,8 +123,8 @@ if __name__ == "__main__":
 			t.start()
 			start = end_for_thread + timedelta(days=1)
 
-		print('start and end for thread', start.strftime("%m_%d_%y"), end.strftime("%m_%d_%y"))
-		create_tweet_id_file(start, end_for_thread)
+		print('start and end for main thread', start.strftime("%m_%d_%y"), end.strftime("%m_%d_%y"))
+		create_tweet_id_file(start, end)
 		# Wait for threads
 		for t in threads:
 			t.join()
