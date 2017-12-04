@@ -6,10 +6,10 @@ from time import sleep
 import json
 import datetime
 import os
-import psutil
 import sys
 import threading
 import scrape
+import multiprocessing
 
 using_python3 = sys.version_info[0] >= 3
 if not using_python3:
@@ -17,15 +17,17 @@ if not using_python3:
 	sys.exit(1)
 
 # only edit these if you're having problems
-delay = .25  # time to wait on each page load before reading the page
+delay = .1  # time to wait for scrolling (comments)
 pop_up_tweet_selector ='.permalink-container'
 text_selector = '.tweet-text'
 metadata_selector = '.metadata'
 like_selector = '.js-actionFavorite .ProfileTweet-actionCount'
 comment_selector = '.js-actionReply .ProfileTweet-actionCount'
 retweet_selector = '.js-actionRetweet .ProfileTweet-actionCount'
-MEMORY_THRESHOLD = .85
+MEMORY_PERCENT_THRESHOLD = 30
 
+# Just to set default barrier parties and make sure it is global
+memory_release_barrier = threading.Barrier(parties=1)
 tweet_details_file_mutex = threading.Lock()
 
 # comment is a reference to '.tweet'
@@ -165,15 +167,20 @@ def get_tweet_details(ids, tweet_detail_file_name):
 	tweets = []
 	for id in ids:
 		driver.get(form_tweet_detail_url(id, user))
-		sleep(delay)
 		tweet = driver.find_element_by_css_selector(pop_up_tweet_selector)
 		tweet_dict = get_tweet_info(driver,tweet, id)
 		tweets.append(tweet_dict)
 		# If memory available is less than threshold, save tweet data to a file to save memory
-		if psutil.virtual_memory().percent >= 85:
+		print(scrape.memory()['percent'])
+		if scrape.memory()['percent'] >= MEMORY_PERCENT_THRESHOLD:
+			# Wait till all threads realize that they need to relinquish their excess memory
+			#print('n waiting', memory_release_barrier.n_waiting)
+			memory_release_barrier.wait()
 			print('----------------- VIRTUAL MEMORY IS ALMOST FULL ---------------------')
 			save_tweet_details_to_file(tweets, tweet_detail_file_name)
 			tweets = []
+			driver.close()
+			driver = webdriver.Firefox()
 
 	save_tweet_details_to_file(tweets, tweet_detail_file_name)
 	driver.close()
@@ -199,11 +206,14 @@ if __name__ == "__main__":
 	# Use multiple threads if multiple id_files
 	use_all_cores = num_threads == ''
 	if use_all_cores:
-		num_cores = psutil.cpu_count() // 2
+		num_cores = multiprocessing.cpu_count() // 2
 		num_threads = num_cores
 	else:
 		num_threads = int(num_threads)
 
+
+	memory_release_barrier = threading.Barrier(parties=num_threads)
+	#print('parties:', memory_release_barrier.parties)
 	if len(all_ids) > num_threads:
 		num_ids_each = len(all_ids) // num_threads
 		start_index = 0

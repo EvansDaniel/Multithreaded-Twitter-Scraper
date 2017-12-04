@@ -5,10 +5,10 @@ from time import sleep
 import json
 import datetime
 import os
-import psutil
 import threading
 from datetime import datetime, timedelta
 import sys
+import multiprocessing
 
 using_python3 = sys.version_info[0] >= 3
 if not using_python3:
@@ -16,7 +16,7 @@ if not using_python3:
 	sys.exit(1)
 
 # time to wait on each page load before reading the page
-delay = .25
+delay = .1
 
 # edit these three variables
 user = 'ivankatrump'
@@ -27,9 +27,10 @@ end = datetime(2017, 12, 4)  # year, month, day
 id_selector = '.time a.tweet-timestamp'
 tweet_selector = 'li.js-stream-item'
 MEMORY_PERCENT_THRESHOLD = 85
-tweet_id_prefix = '_tweets'
 user = user.lower()
 
+# Set default barrier parties (1 thread)
+memory_release_barrier = threading.Barrier(parties=1)
 id_file_mutex = threading.Lock()
 
 def format_day(date):
@@ -81,8 +82,27 @@ def save_to_file(ids, filename):
 	#	print('releasing mutex')
 		id_file_mutex.release()
 
+# Courtesy of https://stackoverflow.com/questions/17718449/determine-free-ram-in-python#answer-17718729
+# Can't use psutil for this since python3-dev/python-dev is not installed on Linux lab computers
+def memory():
+    """
+    Get node total memory and memory usage
+    """
+    with open('/proc/meminfo', 'r') as mem:
+        ret = {}
+        tmp = 0
+        for i in mem:
+            sline = i.split()
+            if str(sline[0]) == 'MemTotal:':
+                ret['total'] = int(sline[1])
+            elif str(sline[0]) in ('MemFree:', 'Buffers:', 'Cached:'):
+                tmp += int(sline[1])
+        ret['free'] = tmp
+        ret['used'] = int(ret['total']) - int(ret['free'])
+        ret['percent'] = int(ret['used']) / int(ret['total']) * 100
+    return ret
+
 def create_tweet_id_file(start, end, id_filename):
-	num_files = 0
 	ids = []
 	driver = webdriver.Chrome()  
 	days = (end - start).days + 1
@@ -92,7 +112,6 @@ def create_tweet_id_file(start, end, id_filename):
 		search_url = form_url(d1, d2)
 		print(search_url)
 		driver.get(search_url)
-		sleep(delay)
 
 		try:
 			found_tweets = driver.find_elements_by_css_selector(tweet_selector)
@@ -117,10 +136,15 @@ def create_tweet_id_file(start, end, id_filename):
 		except NoSuchElementException:
 			print('no tweets on this day')
 
-		if psutil.virtual_memory().percent >= MEMORY_PERCENT_THRESHOLD:
+		if memory()['percent'] >= MEMORY_PERCENT_THRESHOLD:
+			# Wait for all threds to realize that we are beyond the memory threshold
+			# This is so that they will all relinquish their 'driver' and 'ids' memory,
+			# not just the first thread to realize we are beyond the threshold
+			memory_release_barrier.wait()
 			save_to_file(ids, id_filename)
 			ids = []
-			num_files += 1
+			driver.close()
+			driver.Chrome()
 
 		# Go to next day of tweets
 		start = increment_day(start, 1)
@@ -133,7 +157,8 @@ if __name__ == "__main__":
 	id_filename=input('File to store ids in? ')
 	days = (end-start).days + 1
 	# divide by two to account for hyperthreading
-	num_cores = psutil.cpu_count() // 2 
+	num_cores = multiprocessing.cpu_count() // 2 
+	memory_release_barrier = threading.Barrier(parties=num_cores)
 	if days >= num_cores:
 	#	print(start, end_date)
 		num_days_between = days//4
