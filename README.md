@@ -6,7 +6,7 @@ The analysis may appear either in this repository or in the machine-learning rep
 
 Also, special thanks to <a href="https://github.com/bpb27">bpb27</a>. This scraper is an extension of the scraper found at <a href="https://github.com/bpb27/twitter_scraping">https://github.com/bpb27/twitter_scraping</a>. I have added parallelization to gathering tweet details, comment scraping, tweet statistic scraping (such as number of likes), and, since the program uses a lot of virtual memory, I have added checks for memory availabilty. Each thread will create a JSON file and exports the current tweet details when memory is low.
 
-Timings and speed up due to parallelization of scraper (y axis for timings is in seconds):
+Timings and speed up due to parallelization of tweet_details.py (y axis for timings is in seconds):
 
 <strong>6x speed up using 8 cores!</strong>
 
