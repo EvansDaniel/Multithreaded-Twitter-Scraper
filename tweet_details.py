@@ -30,30 +30,36 @@ tweet_details_file_mutex = threading.Lock()
 
 # comment is a reference to '.tweet'
 def get_comment_details(comment):
-	commenter_username = comment.find_element_by_css_selector('.stream-item-header').find_element_by_css_selector('.username').text
-	comment_text = comment.find_element_by_css_selector('.tweet-text').text
-	time_from_original_post = comment.find_element_by_css_selector('._timestamp').text
-	comment_like_num = comment.find_element_by_css_selector(like_selector).text
-	comment_comment_num = comment.find_element_by_css_selector(comment_selector).text
-	comment_retweet_num = comment.find_element_by_css_selector(retweet_selector).text
+	comment_dict = None
+	try:
+		commenter_username = comment.find_element_by_css_selector('.username').text
+		comment_text = comment.find_element_by_css_selector('.tweet-text').text
+		date_of_comment = comment.find_element_by_css_selector('._timestamp').text
+		comment_like_num = comment.find_element_by_css_selector(like_selector).text
+		comment_comment_num = comment.find_element_by_css_selector(comment_selector).text
+		comment_retweet_num = comment.find_element_by_css_selector(retweet_selector).text
+		comment_media = get_tweet_media(comment)
+		# Handling empty comment stats
+		if comment_like_num.strip() == "":
+			comment_like_num = 0
+		if comment_comment_num.strip() == "":
+			comment_comment_num = 0
+		if comment_retweet_num.strip() == "":
+			comment_retweet_num = 0
 
-	# Handling empty comment stats
-	if comment_like_num.strip() == "":
-		comment_like_num = 0
-	if comment_comment_num.strip() == "":
-		comment_comment_num = 0
-	if comment_retweet_num.strip() == "":
-		comment_retweet_num = 0
-
-	comment_dict = {
-		"commenter_username": commenter_username,
-		"comment_text":comment_text,
-		"time_from_original_post":time_from_original_post,
-		"comment_like_num":comment_like_num,
-		"comment_comment_num":comment_comment_num,
-		"comment_retweet_num":comment_retweet_num
-	}
-	return comment_dict
+		comment_dict = {
+			"commenter_username": commenter_username,
+			"comment_media":comment_media,
+			"comment_text":comment_text,
+			"date_of_comment":date_of_comment,
+			"comment_like_num":comment_like_num,
+			"comment_comment_num":comment_comment_num,
+			"comment_retweet_num":comment_retweet_num
+		}
+		return comment_dict
+	except:
+		print('Exception in comments')
+		return comment_dict
 
 # tweet is selenium element reference to '.permalink-container' class
 def get_comments(driver, tweet):
@@ -62,13 +68,11 @@ def get_comments(driver, tweet):
 	old_comment_len = len(comments)
 	new_comment_len = -1
 	while(old_comment_len != new_comment_len):
-		#print('scrolling down to load more comments')
 		driver.execute_script('document.getElementById(\'permalink-overlay\').scrollTo(0, document.getElementById(\'permalink-overlay\').scrollHeight)')
 		sleep(delay)
 		comments = tweet.find_elements_by_css_selector('.tweet')
 		old_comment_len = new_comment_len
 		new_comment_len = len(comments)
-		#print('old comments:', old_comment_len, 'current:', new_comment_len)
 
 	c = []
 	# The first comment is the actual post not a comment so strip it out
@@ -77,17 +81,33 @@ def get_comments(driver, tweet):
 		c.append(comment_details)
 	return c
 
+def get_tweet_media(tweet):
+	media_dict = None
+	try:
+		adaptive_media_selector = '.AdaptiveMedia-container'
+		adaptive_media = tweet.find_element_by_css_selector(adaptive_media_selector)
+		imgs = adaptive_media.find_elements_by_css_selector('img')
+		img_urls = [img.get_attribute("src") for img in imgs]
+		media_dict = {
+			'img_urls': img_urls
+		}
+		return media_dict
+	except:
+		return media_dict
+
 def get_tweet_info(driver,tweet, id):
 	text = tweet.find_element_by_css_selector(text_selector).text
 	metadata = tweet.find_element_by_css_selector(metadata_selector).text
 	like_num = tweet.find_element_by_css_selector(like_selector).text
 	comment_num = tweet.find_element_by_css_selector(comment_selector).text
 	comments = get_comments(driver, tweet)
+	tweet_media = get_tweet_media(tweet)
 	retweet_num = tweet.find_element_by_css_selector(retweet_selector).text
 	tweet_dict = {
 		"tweet_id": id,
 		"tweet_text": text,
 		"tweet_metadata": metadata,
+		"tweet_media": tweet_media,
 		"like_num": like_num,
 		"comment_num": comment_num,
 		"comments": comments,
@@ -105,8 +125,8 @@ def save_tweet_details_to_file(tweets, filename):
 		tweet_detail_file = scrape.open_file(filename, 'r+')
 		try:
 			file_tweets = json.load(tweet_detail_file)
-			file_tweets.extend(tweets)
-			all_tweets = file_tweets
+			tweets.extend(file_tweets)
+			all_tweets = tweets
 		except:
 			all_tweets = tweets
 
@@ -141,7 +161,6 @@ def ensure_unique_tweets(filename):
 def get_tweet_details(ids, tweet_detail_file_name):
 	if len(ids) == 0:
 		return
-	print(len(ids))
 	driver = webdriver.Firefox()  # options are Chrome() Firefox() Safari()
 	tweets = []
 	for id in ids:
@@ -185,7 +204,6 @@ if __name__ == "__main__":
 	else:
 		num_threads = int(num_threads)
 
-	print(len(all_ids))
 	if len(all_ids) > num_threads:
 		num_ids_each = len(all_ids) // num_threads
 		start_index = 0
@@ -194,7 +212,7 @@ if __name__ == "__main__":
 		# Minus 1 b/c we want to use the main thread as well
 		num_threads -= 1
 		for i in range(num_threads):
-			print('thread',i,start_index, end_index,len(all_ids[start_index:end_index]))
+			#print('thread',i,start_index, end_index,len(all_ids[start_index:end_index]))
 			t = threading.Thread(target=get_tweet_details, 
 				kwargs={'ids':all_ids[start_index:end_index], 'tweet_detail_file_name':tweet_detail_file_name})
 			threads.append(t)
@@ -202,7 +220,7 @@ if __name__ == "__main__":
 			start_index = end_index
 			end_index = start_index + num_ids_each
 
-		print('main thread',start_index,len(all_ids[start_index:]))
+		#print('main thread',start_index,len(all_ids[start_index:]))
 		# Set the main thread to work
 		get_tweet_details(all_ids[start_index:], tweet_detail_file_name)
 

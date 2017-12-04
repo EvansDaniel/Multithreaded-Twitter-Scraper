@@ -16,12 +16,12 @@ if not using_python3:
 	sys.exit(1)
 
 # time to wait on each page load before reading the page
-delay = 1 
+delay = .25
 
 # edit these three variables
-user = 'realdonaldtrump'
-start = datetime(2017, 11, 30)  # year, month, day
-end = datetime(2017, 12, 3)  # year, month, day
+user = 'ivankatrump'
+start = datetime(2015, 1, 1)  # year, month, day
+end = datetime(2017, 12, 4)  # year, month, day
 
 # don't mess with this stuff
 id_selector = '.time a.tweet-timestamp'
@@ -84,7 +84,7 @@ def save_to_file(ids, filename):
 def create_tweet_id_file(start, end, id_filename):
 	num_files = 0
 	ids = []
-	driver = webdriver.Firefox()  
+	driver = webdriver.Chrome()  
 	days = (end - start).days + 1
 	for day in range(days):
 		d1 = format_day(increment_day(start, 0))
@@ -143,12 +143,12 @@ if __name__ == "__main__":
 		for i in range(num_threads):
 			end_for_thread = start + timedelta(days=num_days_between-1)
 			t = threading.Thread(target=create_tweet_id_file, kwargs={'start':start, 'end':end_for_thread, 'id_filename':id_filename})
-			print('start and end for thread', i,':', start.strftime("%m_%d_%y"), end_for_thread.strftime("%m_%d_%y"))
+			#print('start and end for thread', i,':', start.strftime("%m_%d_%y"), end_for_thread.strftime("%m_%d_%y"))
 			threads.append(t)
 			t.start()
 			start = end_for_thread + timedelta(days=1)
 
-		print('start and end for main thread', start.strftime("%m_%d_%y"), end.strftime("%m_%d_%y"))
+		#print('start and end for main thread', start.strftime("%m_%d_%y"), end.strftime("%m_%d_%y"))
 		create_tweet_id_file(start, end, id_filename)
 		# Wait for threads
 		for t in threads:
