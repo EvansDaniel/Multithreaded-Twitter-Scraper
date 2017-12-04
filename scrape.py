@@ -20,8 +20,7 @@ delay = 1
 
 # edit these three variables
 user = 'realdonaldtrump'
-filename=input('What is the id filename?')
-start = datetime(2015, 1, 1)  # year, month, day
+start = datetime(2017, 11, 30)  # year, month, day
 end = datetime(2017, 12, 3)  # year, month, day
 
 # don't mess with this stuff
@@ -30,6 +29,8 @@ tweet_selector = 'li.js-stream-item'
 MEMORY_PERCENT_THRESHOLD = 85
 tweet_id_prefix = '_tweets'
 user = user.lower()
+
+id_file_mutex = threading.Lock()
 
 def format_day(date):
     day = '0' + str(date.day) if len(str(date.day)) == 1 else str(date.day)
@@ -45,19 +46,42 @@ def form_url(since, until):
 def increment_day(date, i):
     return date + timedelta(days=i)
 
-def save_file(ids, num_files):
-	twitter_ids_filename = user + tweet_id_prefix + '_' + str(threading.get_ident()) + '_' + \
-		str(num_files) + '_' + start.strftime("%m_%d_%y") + '_' + end.strftime("%m_%d_%y") + '.json'
-	with open(twitter_ids_filename, 'w') as outfile:
+def open_file(filename, *args, **kwargs):
+	# Create file if not exists
+    open(filename, 'a').close()
+    # Encapsulate the low-level file descriptor in a python file object
+    return open(filename, *args, **kwargs)
+
+def save_to_file(ids, filename):
+	# Open for reading and writing
+	id_file_mutex.acquire()
+	#print('aquiring mutex')
+	try:
+		id_json_file = open_file(filename, 'r+')
 		ids = list(set(ids))
-		print(ids,'\n')
+		try:
+			file_ids = json.load(id_json_file)
+			file_ids = file_ids['ids']
+			file_ids.extend(ids)
+			all_ids = list(set(file_ids))
+		except:
+			all_ids = ids
+		#print(len(all_ids),len(ids),'\n')
 		tweet_ids = {
 			"user":user,
-			"ids":ids
+			"ids":all_ids
 		}
-		json.dump(tweet_ids, outfile)
+		# Seek to beginning and truncate the file
+		id_json_file.seek(0)
+		id_json_file.truncate()
+		json.dump(tweet_ids, id_json_file)
+	finally:
+		if id_json_file:
+			id_json_file.close()
+	#	print('releasing mutex')
+		id_file_mutex.release()
 
-def create_tweet_id_file(start, end):
+def create_tweet_id_file(start, end, id_filename):
 	num_files = 0
 	ids = []
 	driver = webdriver.Firefox()  
@@ -94,7 +118,7 @@ def create_tweet_id_file(start, end):
 			print('no tweets on this day')
 
 		if psutil.virtual_memory().percent >= MEMORY_PERCENT_THRESHOLD:
-			save_file(ids, num_files)
+			save_to_file(ids, id_filename)
 			ids = []
 			num_files += 1
 
@@ -102,10 +126,11 @@ def create_tweet_id_file(start, end):
 		start = increment_day(start, 1)
 
 	# Save remaining found ids
-	save_file(ids, num_files)
+	save_to_file(ids, id_filename)
 	driver.close()
 
 if __name__ == "__main__":
+	id_filename=input('File to store ids in? ')
 	days = (end-start).days + 1
 	# divide by two to account for hyperthreading
 	num_cores = psutil.cpu_count() // 2 
@@ -117,18 +142,18 @@ if __name__ == "__main__":
 		num_threads = num_cores-1
 		for i in range(num_threads):
 			end_for_thread = start + timedelta(days=num_days_between-1)
-			t = threading.Thread(target=create_tweet_id_file, kwargs={'start':start, 'end':end_for_thread})
+			t = threading.Thread(target=create_tweet_id_file, kwargs={'start':start, 'end':end_for_thread, 'id_filename':id_filename})
 			print('start and end for thread', i,':', start.strftime("%m_%d_%y"), end_for_thread.strftime("%m_%d_%y"))
 			threads.append(t)
 			t.start()
 			start = end_for_thread + timedelta(days=1)
 
 		print('start and end for main thread', start.strftime("%m_%d_%y"), end.strftime("%m_%d_%y"))
-		create_tweet_id_file(start, end)
+		create_tweet_id_file(start, end, id_filename)
 		# Wait for threads
 		for t in threads:
 			t.join()
 	else:
-		create_tweet_id_file(start,end)
+		create_tweet_id_file(start,end, id_filename)
 
 			

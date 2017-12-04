@@ -1,3 +1,4 @@
+import time
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
@@ -8,6 +9,7 @@ import os
 import psutil
 import sys
 import threading
+import scrape
 
 using_python3 = sys.version_info[0] >= 3
 if not using_python3:
@@ -22,12 +24,9 @@ metadata_selector = '.metadata'
 like_selector = '.js-actionFavorite .ProfileTweet-actionCount'
 comment_selector = '.js-actionReply .ProfileTweet-actionCount'
 retweet_selector = '.js-actionRetweet .ProfileTweet-actionCount'
-
 MEMORY_THRESHOLD = .85
-twitter_user = input('What is the username of the twitter user? ')
-num_threads = input('How many threads to use? (Hit enter to use all cores)')
-tweets_filename_prefix = twitter_user + '_tweet_details'
-tweet_id_prefix = '_tweets_'
+
+tweet_details_file_mutex = threading.Lock()
 
 # comment is a reference to '.tweet'
 def get_comment_details(comment):
@@ -100,27 +99,51 @@ def form_tweet_detail_url(id, user):
 	url = 'https://twitter.com/' + user + '/status/' + id
 	return url
 
-def get_id_files(prefix):
-	files = os.listdir('.')
-	id_files = []
-	for file in files:
-		if os.path.isfile(file) and file.startswith(twitter_user + tweet_id_prefix):
-			id_files.append(file)
-	return id_files
+def save_tweet_details_to_file(tweets, filename):
+	tweet_details_file_mutex.acquire()
+	try:
+		tweet_detail_file = scrape.open_file(filename, 'r+')
+		try:
+			file_tweets = json.load(tweet_detail_file)
+			file_tweets.extend(tweets)
+			all_tweets = file_tweets
+		except:
+			all_tweets = tweets
 
-def create_tweet_details_file(tweets, num_files):
-	if len(tweets) == 0:
-		return
-	tweets_filename = tweets_filename_prefix + '_' + str(threading.get_ident()) + '_' + str(num_files) + '.json'
-	with open(tweets_filename, 'w') as outfile:
-		json.dump(tweets, outfile)
+		# Seek to beginning and truncate the file
+		tweet_detail_file.seek(0)
+		tweet_detail_file.truncate()
+		json.dump(all_tweets, tweet_detail_file)
+	finally:
+		if tweet_detail_file:
+			tweet_detail_file.close()
+		tweet_details_file_mutex.release()
 
-def create_tweet_detail_files(ids):
+def ensure_unique_tweets(filename):
+	tweet_detail_file = scrape.open_file(filename, 'r+')
+	try:
+		file_tweets = json.load(tweet_detail_file)
+	except:
+		print(filename, 'does not contain valid JSON')
+		sys.exit(1)
+	tweet_ids = []
+	unique_tweets = []
+	for tweet in file_tweets:
+		tweet_id = tweet['tweet_id']
+		if not tweet_id in tweet_ids:
+			unique_tweets.append(tweet)
+		tweet_ids.append(tweet_id)
+
+	tweet_detail_file.seek(0)
+	tweet_detail_file.truncate()
+	json.dump(unique_tweets, tweet_detail_file)
+
+def get_tweet_details(ids, tweet_detail_file_name):
 	if len(ids) == 0:
 		return
+	print(len(ids))
 	driver = webdriver.Firefox()  # options are Chrome() Firefox() Safari()
 	tweets = []
-	num_files = 0
 	for id in ids:
 		driver.get(form_tweet_detail_url(id, user))
 		sleep(delay)
@@ -129,69 +152,67 @@ def create_tweet_detail_files(ids):
 		tweets.append(tweet_dict)
 		# If memory available is less than threshold, save tweet data to a file to save memory
 		if psutil.virtual_memory().percent >= 85:
-			print('-----------------VIRTUAL MEMORY IS ALMOST EMPTY---------------------')
-			create_tweet_details_file(tweets, num_files)
-			num_files += 1
+			print('----------------- VIRTUAL MEMORY IS ALMOST FULL ---------------------')
+			save_tweet_details_to_file(tweets, tweet_detail_file_name)
 			tweets = []
 
-	create_tweet_details_file(tweets, num_files)
+	save_tweet_details_to_file(tweets, tweet_detail_file_name)
 	driver.close()
 
-id_files = get_id_files(twitter_user)
-if len(id_files) == 0:
-	print('No id files for that username:', twitter_user)
-	print('Run python3 scrape.py with that twitter user as input')
-	sys.exit(1)
+if __name__ == "__main__":
+	id_file_name = input('What is the name of the id file? ')
+	tweet_detail_file_name = input('What is the tweet detail output file name? ')
+	num_threads = input('How many threads to use? (Hit enter to use all cores) ')
 
-# Make sure we are not doing duplicate work by checking for duplicate twitter ids
-all_ids = []
-id_len = 0
-for id_file in id_files:
-	user_tweet_dict = json.load(open(id_file))
+	# Make sure we are not doing duplicate work by checking for duplicate twitter ids
+	all_ids = []
+	try:
+		user_tweet_dict = json.load(open(id_file_name))
+	except:
+		print('File not found. Please enter an existing filename')
+		sys.exit(1)
 	user = user_tweet_dict['user']
-	ids = user_tweet_dict['ids']
-	id_len += len(ids)
-	all_ids.extend(ids)
-	all_ids = list(set(all_ids))
+	all_ids = list(set(user_tweet_dict['ids']))
 
+	current_milli_time = lambda: int(round(time.time() * 1000))
 
-print(len(all_ids), id_len)
+	start = current_milli_time()
+	# Use multiple threads if multiple id_files
+	use_all_cores = num_threads == ''
+	if use_all_cores:
+		num_cores = psutil.cpu_count() // 2
+		num_threads = num_cores
+	else:
+		num_threads = int(num_threads)
 
-import time
-current_milli_time = lambda: int(round(time.time() * 1000))
-
-start = current_milli_time()
-# Use multiple threads if multiple id_files
-use_all_cores = num_threads == ''
-if use_all_cores:
-	num_cores = psutil.cpu_count() // 2
-	num_threads = num_cores
-else:
-	num_threads = int(num_threads)
-
-if len(all_ids) > num_threads:
-	num_ids_each = len(all_ids) // num_threads
-	start_index = 0
-	end_index = start_index + num_ids_each
-	threads = []
-	# Minus 1 b/c we want to use the main thread as well
-	num_threads -= 1
-	for i in range(num_threads):
-	#	print('thread',i,start_index, end_index,len(all_ids[start_index:end_index]))
-		t = threading.Thread(target=create_tweet_detail_files, kwargs={'ids':all_ids[start_index:end_index]})
-		threads.append(t)
-		t.start()
-		start_index = end_index + 1
+	print(len(all_ids))
+	if len(all_ids) > num_threads:
+		num_ids_each = len(all_ids) // num_threads
+		start_index = 0
 		end_index = start_index + num_ids_each
+		threads = []
+		# Minus 1 b/c we want to use the main thread as well
+		num_threads -= 1
+		for i in range(num_threads):
+			print('thread',i,start_index, end_index,len(all_ids[start_index:end_index]))
+			t = threading.Thread(target=get_tweet_details, 
+				kwargs={'ids':all_ids[start_index:end_index], 'tweet_detail_file_name':tweet_detail_file_name})
+			threads.append(t)
+			t.start()
+			start_index = end_index
+			end_index = start_index + num_ids_each
 
-	#print('main thread',start_index,len(all_ids[start_index:]))
-	# Set the main thread to work
-	create_tweet_detail_files(all_ids[start_index:])
+		print('main thread',start_index,len(all_ids[start_index:]))
+		# Set the main thread to work
+		get_tweet_details(all_ids[start_index:], tweet_detail_file_name)
 
-	# Wait for other threads to finish
-	for t in threads:
-		t.join()
+		# Wait for other threads to finish
+		for t in threads:
+			t.join()
 
-	print((current_milli_time() - start) / 1000, 'seconds')
-else:
-	create_tweet_detail_files(all_ids)
+		print((current_milli_time() - start) / 1000, 'seconds')
+	else:
+		get_tweet_details(all_ids, tweet_detail_file_name)
+
+	# Make sure all tweet details are unique
+	ensure_unique_tweets(tweet_detail_file_name)
