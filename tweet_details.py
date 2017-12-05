@@ -3,6 +3,7 @@ from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
 from time import sleep
+from time import time
 import json
 import datetime
 import os
@@ -171,7 +172,6 @@ def get_tweet_details(ids, tweet_detail_file_name):
 		tweet_dict = get_tweet_info(driver,tweet, id)
 		tweets.append(tweet_dict)
 		# If memory available is less than threshold, save tweet data to a file to save memory
-		print(scrape.memory()['percent'])
 		if scrape.memory()['percent'] >= MEMORY_PERCENT_THRESHOLD:
 			# Wait till all threads realize that they need to relinquish their excess memory
 			#print('n waiting', memory_release_barrier.n_waiting)
@@ -190,6 +190,7 @@ if __name__ == "__main__":
 	tweet_detail_file_name = input('What is the tweet detail output file name? ')
 	num_threads = input('How many threads to use? (Hit enter to use all cores) ')
 
+	start_time = time()
 	# Make sure we are not doing duplicate work by checking for duplicate twitter ids
 	all_ids = []
 	try:
@@ -200,9 +201,6 @@ if __name__ == "__main__":
 	user = user_tweet_dict['user']
 	all_ids = list(set(user_tweet_dict['ids']))
 
-	current_milli_time = lambda: int(round(time.time() * 1000))
-
-	start = current_milli_time()
 	# Use multiple threads if multiple id_files
 	use_all_cores = num_threads == ''
 	if use_all_cores:
@@ -211,10 +209,9 @@ if __name__ == "__main__":
 	else:
 		num_threads = int(num_threads)
 
-
 	memory_release_barrier = threading.Barrier(parties=num_threads)
 	#print('parties:', memory_release_barrier.parties)
-	if len(all_ids) > num_threads:
+	if len(all_ids) >= num_threads:
 		num_ids_each = len(all_ids) // num_threads
 		start_index = 0
 		end_index = start_index + num_ids_each
@@ -237,10 +234,11 @@ if __name__ == "__main__":
 		# Wait for other threads to finish
 		for t in threads:
 			t.join()
-
-		print((current_milli_time() - start) / 1000, 'seconds')
 	else:
 		get_tweet_details(all_ids, tweet_detail_file_name)
 
 	# Make sure all tweet details are unique
 	ensure_unique_tweets(tweet_detail_file_name)
+
+	end_time = time()
+	print(end_time - start_time, 'seconds')

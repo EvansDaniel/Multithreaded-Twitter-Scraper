@@ -2,6 +2,7 @@ from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
 from time import sleep
+from time import time
 import json
 import datetime
 import os
@@ -20,7 +21,7 @@ delay = .1
 
 # edit these three variables
 user = 'ivankatrump'
-start = datetime(2015, 1, 1)  # year, month, day
+start = datetime(2017, 11, 29)  # year, month, day
 end = datetime(2017, 12, 4)  # year, month, day
 
 # don't mess with this stuff
@@ -110,7 +111,7 @@ def create_tweet_id_file(start, end, id_filename):
 		d1 = format_day(increment_day(start, 0))
 		d2 = format_day(increment_day(start, 1))
 		search_url = form_url(d1, d2)
-		print(search_url)
+		#print(search_url)
 		driver.get(search_url)
 
 		try:
@@ -124,7 +125,7 @@ def create_tweet_id_file(start, end, id_filename):
 				found_tweets = driver.find_elements_by_css_selector(tweet_selector)
 				increment += 10
 
-			print('{} tweets found, {} total'.format(len(found_tweets), len(ids)))
+			#print('{} tweets found, {} total'.format(len(found_tweets), len(ids)))
 
 			for tweet in found_tweets:
 				try:
@@ -155,16 +156,23 @@ def create_tweet_id_file(start, end, id_filename):
 
 if __name__ == "__main__":
 	id_filename=input('File to store ids in? ')
+	num_threads = input('# threads? ')
+	start_time = time()
 	days = (end-start).days + 1
 	# divide by two to account for hyperthreading
-	num_cores = multiprocessing.cpu_count() // 2 
-	memory_release_barrier = threading.Barrier(parties=num_cores)
-	if days >= num_cores:
+	if num_threads == "":
+		num_cores = multiprocessing.cpu_count() // 2 
+		num_threads = num_cores
+	else:
+		num_threads = int(num_threads)
+
+	memory_release_barrier = threading.Barrier(parties=num_threads)
+	if days >= num_threads:
 	#	print(start, end_date)
 		num_days_between = days//4
 	#	print((num_days_between) * 4 + (days % 4), days)
 		threads = []
-		num_threads = num_cores-1
+		num_threads -= 1
 		for i in range(num_threads):
 			end_for_thread = start + timedelta(days=num_days_between-1)
 			t = threading.Thread(target=create_tweet_id_file, kwargs={'start':start, 'end':end_for_thread, 'id_filename':id_filename})
@@ -181,4 +189,6 @@ if __name__ == "__main__":
 	else:
 		create_tweet_id_file(start,end, id_filename)
 
-			
+	end_time = time()
+	print('Tweets found:', len(json.load(open(id_filename))['ids']))
+	print(end_time - start_time, 'seconds')
