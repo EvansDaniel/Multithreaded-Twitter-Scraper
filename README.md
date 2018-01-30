@@ -4,7 +4,7 @@ This scraper will be used to analyze twitter users sentiment towards Donald Trum
 
 The analysis may appear either in this repository or in the machine-learning repository.
 
-Also, special thanks to <a href="https://github.com/bpb27">bpb27</a>. This scraper is an extension of the scraper found at <a href="https://github.com/bpb27/twitter_scraping">https://github.com/bpb27/twitter_scraping</a>. I have added parallelization to gathering tweet details, comment scraping, tweet statistic scraping (such as number of likes), and, since the program uses a lot of virtual memory, I have added checks for memory availabilty. Each thread will create a JSON file and exports the current tweet details when memory is low.
+Also, special thanks to <a href="https://github.com/bpb27">bpb27</a>. This scraper is an extension of the scraper found at <a href="https://github.com/bpb27/twitter_scraping">https://github.com/bpb27/twitter_scraping</a>. I have added parallelization to speed up gathering tweet details, comment scraping, tweet metadata scraping (such as number of likes and retweets), and, <strike>since the program uses a lot of virtual memory, I have added checks for memory availabilty</strike> it is only true that the program consumes a lot of memory when you use Firefox as the selenium web browser; I believe it has some memory leaks, so there are checks for that to eliminate the issue. Each thread will create a JSON file and exports the current tweet details when memory is low.
 
 Timings and speed up due to parallelization of tweet_details.py (y axis for timings is in seconds):
 
